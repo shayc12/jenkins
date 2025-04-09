@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Tests') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        sh './run-unit-tests.sh'
+                    }
+                }
+                stage('Integration Tests') {
+                    steps {
+                        sh './run-integration-tests.sh'
+                    }
+                }
+            }
+        }
+
+        stage('Static Code Analysis') {
+            steps {
+                sh './run-linter.sh'
+            }
+        }
+
+        stage('Build Artifact') {
+            steps {
+                sh './build-artifact.sh'
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                sh './deploy-staging.sh'
+            }
+        }
+    }
+
+    post {
+        success {
+            slackSend(color: 'good', message: "Build Successful: ${env.BUILD_URL}")
+        }
+        failure {
+            slackSend(color: 'danger', message: "Build Failed: ${env.BUILD_URL}")
+        }
+    }
+}
