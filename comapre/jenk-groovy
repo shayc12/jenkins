@@ -1,0 +1,60 @@
+// We'll create a pipeline that does the following:
+// Checkout code from Git
+// Run tests in parallel
+// Run static code analysis
+// Build the artifact
+// Deploy to staging if tests pass
+// Send Slack notification on success or failure
+
+node {
+    try {
+        stage('Checkout') {
+            checkout scm
+        }
+
+        stage('Parallel Tests') {
+            parallel (
+                "Unit Tests": {
+                    stage('Unit Tests') {
+                        sh './run-unit-tests.sh'
+                    }
+                },
+                "Integration Tests": {
+                    stage('Integration Tests') {
+                        sh './run-integration-tests.sh'
+                    }
+                }
+            )
+        }
+
+        stage('Static Code Analysis') {
+            sh './run-linter.sh'
+        }
+
+        stage('Build Artifact') {
+            sh './build-artifact.sh'
+        }
+
+        stage('Deploy to Staging') {
+            if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
+                sh './deploy-staging.sh'
+            } else {
+                echo "Skipping deployment, tests failed."
+            }
+        }
+
+        currentBuild.result = 'SUCCESS'
+    } catch (err) {
+        currentBuild.result = 'FAILURE'
+        echo "Error: ${err}"
+        throw err
+    } finally {
+        stage('Notify') {
+            if (currentBuild.result == 'SUCCESS') {
+                slackSend(color: 'good', message: "Build Successful: ${env.BUILD_URL}")
+            } else {
+                slackSend(color: 'danger', message: "Build Failed: ${env.BUILD_URL}")
+            }
+        }
+    }
+}
